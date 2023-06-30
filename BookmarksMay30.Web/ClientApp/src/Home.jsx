@@ -34,7 +34,7 @@ const Home = () => {
                 <tbody>
                     {bookmarks.map(b => {
                         return (
-                            <tr key={b.id} >
+                            <tr key={b.id }>
                                 <td><a href={b.siteUrl}>{b.bookmark}</a></td>
                                 <td>{b.count}</td>
                             </tr>)

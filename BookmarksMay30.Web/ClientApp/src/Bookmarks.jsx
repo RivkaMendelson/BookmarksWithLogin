@@ -2,6 +2,8 @@
 import { useAuth } from './AuthContext';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { produce } from 'immer';
+
 
 const Bookmarks = () => {
 
@@ -9,90 +11,118 @@ const Bookmarks = () => {
     const navigate = useNavigate();
     const [bookmarks, setBookmarks] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentBookmark, setCurrentBookmark] = useState({ id: 0, name: '' });
+    const [currentlyEditingBookmarks, setCurrentlyEditingBookmarks] = useState([]);
 
 
     useEffect(() => {
-        const getBookmarks = async () => {
-            const bookmarks = await axios.get(`/api/bookmark/getById?id=${user.id}`);
-            setBookmarks(bookmarks.data);
-            setIsLoading(false);
-        }
         getBookmarks();
     }, []);
 
-    if (isLoading) {
-        return <h1>Loading...</h1>
+    const getBookmarks = async () => {
+        const { data } = await axios.get(`/api/bookmark/getById?id=${user.id}`);
+        data.forEach(bkm => bkm.originalName = bkm.name);
+        setBookmarks(data);
+
+        setIsLoading(false);
     }
 
-    if (bookmarks.length == 0) {
-        return (<div className="row" style={{ alignItems: 'center' }}>
-            <h3>You have no bookmarks added yet. Click here to add one!</h3>
-            <a href='/AddBookmark' className='btn btn-dark'>Add Bookmark</a>
-            </div> )
+
+    const onEditClick = (id) => {
+        setCurrentlyEditingBookmarks([...currentlyEditingBookmarks, id]);
+  
+    };
+
+    const onCancelClick = (id) => {
+        setCurrentlyEditingBookmarks(currentlyEditingBookmarks.filter(b => b !== id));
+        const nextState = produce(bookmarks, draftBookmarks => {
+            const bookmark = draftBookmarks.find(b => b.id === id);
+            bookmark.name = bookmark.originalName;
+        });
+        setBookmarks(nextState);
+
+
     }
 
-    const onEditClick = async (name, id) => {
-        setCurrentBookmark({name, id});
-    };
+    const onNameChange = (e, id) => {
 
-    const onNameChange = e => {
-        const copy = { ...currentBookmark };
-        copy.name = e.target.value;
-        setCurrentBookmark(copy);
+        const nextState = produce(bookmarks, draftBookmarks => {
+            const bookmark = draftBookmarks.find(b => b.id === id);
+            bookmark.name = e.target.value;
+        });
+        setBookmarks(nextState);
     }
 
-    const onDeleteClick = async id => {
-        await axios.post('/api/bookmark/delete', { id });
-        navigate('/Bookmarks');
-        const bookmarks = await axios.get(`/api/bookmark/getById?id=${user.id}`);
-        setBookmarks(bookmarks.data);
-    };
 
-    const onUpdateClick = async () => {
-        await axios.post('/api/bookmark/update', currentBookmark);
-        setCurrentBookmark({});
-        const bookmarks = await axios.get(`/api/bookmark/getById?id=${user.id}`);
-        setBookmarks(bookmarks.data);
-    };
 
-    return (<>
-        <h1>Welcome Back {user.firstName} {user.lastName}</h1>
-        <div className='container'>
-            <table className='table table-hover table-striped table-bordered'>
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Link</th>
-                        <th>Edit/Delete</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {bookmarks.map(b => {
-                        return (
-                            <tr key={b.id} >
-                                {b.id != currentBookmark.id ? <td>{b.name}</td> : <td><input type="text"
-                                    onChange={onNameChange}
-                                    className="form-control" placeholder="Title" value={currentBookmark.name} /></td>}
+const onDeleteClick = async id => {
+    await axios.post('/api/bookmark/delete', { id });
+    navigate('/Bookmarks');
+    getBookmarks();
+};
 
-                                <td><a href={b.siteUrl}>{b.siteUrl}</a></td>
+const onUpdateClick = async id => {
+    const bookmark = bookmarks.find(b => b.id === id);
+    await axios.post('/api/bookmark/update', bookmark);
+    setCurrentlyEditingBookmarks(currentlyEditingBookmarks.filter(b => b !== id));
+    getBookmarks();
+};
 
-                                <td>
-                                    {b.id == currentBookmark.id &&
-                                        <button className='btn btn-primary' onClick={onUpdateClick }>Update</button>
-                                            /*<button className='btn btn-warning' onClick={setCurrentBookmark({})}>Cancel</button>*/}
-                                    {b.id != currentBookmark.id &&
-                                        <button className='btn btn-warning' onClick={() => onEditClick(b.name, b.id)}> Edit</button>}
-                                    
-                                    <button onClick={() => onDeleteClick(b.id)} className='btn btn-danger'>Delete</button></td>
-                            </tr>
-                        )
-                    })
-                    }
-                </tbody>
-            </table>
-        </div>
-    </>)
+
+
+if (isLoading) {
+    return <h1>Loading...</h1>
+}
+
+if (!bookmarks) {
+    return (<div className="row" style={{ alignItems: 'center' }}>
+        <h3>You have no bookmarks added yet. Click here to add one!</h3>
+        <a href='/AddBookmark' className='btn btn-dark'>Add Bookmark</a>
+    </div>)
+}
+
+
+return (<>
+    <h1>Welcome Back {user.firstName} {user.lastName}</h1>
+    <div className='container'>
+        <table className='table table-hover table-striped table-bordered'>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Link</th>
+                    <th>Edit/Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                {bookmarks.map(b => {
+                    return (
+                        <tr key={b.id} >
+                            {!currentlyEditingBookmarks.includes(b.id) ? <td>{b.name}</td> : <td><input type="text"
+                                onChange={(e) => onNameChange(e, b.id)}
+                                className="form-control" name="name" placeholder="Title" value={b.name} /></td>}
+
+                            <td><a href={b.siteUrl}>{b.siteUrl}</a></td>
+
+                            <td>
+                                {currentlyEditingBookmarks.includes(b.id) &&
+                                    <>
+                                        <button className='btn btn-primary' style={{ margin: '5px' }} onClick={() => onUpdateClick(b.id)}>Update</button>
+                                        <button className='btn btn-warning' style={{ margin: '5px' }} onClick={() => onCancelClick(b.id)}>Cancel</button>
+                                    </>
+                                }
+
+                                {!currentlyEditingBookmarks.includes(b.id) &&
+                                    <><button className='btn btn-warning' style={{ margin: '5px' }} onClick={() => onEditClick(b.id)}> Edit</button></>
+                                }
+
+                                <button onClick={() => onDeleteClick(b.id)} style={{ margin: '5px' }} className='btn btn-danger'>Delete</button></td>
+                        </tr>
+                    )
+                })
+                }
+            </tbody>
+        </table>
+    </div>
+</>)
 };
 
 export default Bookmarks;
